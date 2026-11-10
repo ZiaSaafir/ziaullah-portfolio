@@ -55,7 +55,8 @@ button { color: inherit; }
 .theme-toggle, .menu-toggle { width: 36px; height: 36px; border: 1px solid var(--line); background: transparent; display: grid; place-items: center; border-radius: 50%; cursor: pointer; color: var(--muted); transition: border-color .2s, color .2s, background .2s; }
 .theme-toggle:hover, .menu-toggle:hover { border-color: var(--accent); color: var(--accent); }
 .menu-toggle { display: none; }
-.offline-notice { text-align: center; padding: 9px 18px; background: rgba(198, 242, 119, .1); color: var(--accent); font-size: 11px; }
+.resource-feedback { margin: 12px 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.resource-error { color: #e8ad6b; overflow-wrap: anywhere; }
 
 .hero { position: relative; min-height: 635px; display: grid; grid-template-columns: 1.05fr .95fr; align-items: center; padding-block: 74px 92px; }
 .hero-copy { position: relative; z-index: 2; padding-bottom: 24px; }

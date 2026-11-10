@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -7,53 +7,29 @@ import {
   BookOpen, Check, Code2, ExternalLink, Github, Layers3, Linkedin,
   Menu, Moon, Search, Send, Sparkles, Sun, X,
 } from "lucide-react";
-import {
-  categories, initialProfile, initialProjects, initialSkills, skillGroups,
-} from "./content.js";
+import { getArticle, getArticles, getProfile, getProjects, getSkills, submitContact } from "./api.js";
+import { categories, skillGroups } from "./content.js";
+import useApiResource from "./useApiResource.js";
 
-const API = import.meta.env.VITE_API_URL || "";
-const defaultArticles = [];
-
-async function getJSON(path) {
-  const response = await fetch(`${API}/api/${path}`);
-  if (!response.ok) throw new Error(`Request failed (${response.status})`);
-  return response.json();
-}
+const EMPTY_LIST = [];
 
 function usePortfolioData() {
-  const [data, setData] = useState({
-    profile: initialProfile,
-    projects: initialProjects,
-    articles: defaultArticles,
-    skills: initialSkills,
-    connected: true,
-  });
+  return {
+    profile: useApiResource(getProfile, null),
+    projects: useApiResource(getProjects, EMPTY_LIST),
+    articles: useApiResource(getArticles, EMPTY_LIST),
+    skills: useApiResource(getSkills, EMPTY_LIST),
+  };
+}
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([
-      getJSON("profile/"),
-      getJSON("projects/"),
-      getJSON("articles/"),
-      getJSON("skills/"),
-    ])
-      .then(([profile, projects, articles, skills]) => {
-        if (!active) return;
-        setData({
-          profile: { ...initialProfile, ...profile },
-          projects,
-          articles,
-          skills,
-          connected: true,
-        });
-      })
-      .catch(() => {
-        if (active) setData((current) => ({ ...current, connected: false }));
-      });
-    return () => { active = false; };
-  }, []);
-
-  return data;
+function ResourceFeedback({ name, loading, error }) {
+  if (loading) {
+    return <p className="resource-feedback" role="status">Loading {name}…</p>;
+  }
+  if (error) {
+    return <p className="resource-feedback resource-error" role="alert">{name} couldn’t be loaded: {error}</p>;
+  }
+  return null;
 }
 
 function IconLink({ href, label, children }) {
@@ -64,7 +40,7 @@ function IconLink({ href, label, children }) {
   );
 }
 
-function Header({ theme, setTheme, profile }) {
+function Header({ theme, setTheme }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
   const homeAnchor = (anchor) => pathname === "/" ? anchor : `/${anchor}`;
@@ -103,9 +79,10 @@ function SectionHeading({ index, title, note }) {
   );
 }
 
-function Hero({ profile }) {
+function Hero({ resource }) {
+  const profile = resource.data || {};
   const roles = ["Full-stack developer", "Backend developer", "React & Django builder", "AI / ML enthusiast"];
-  const headlineWords = (profile.headline || initialProfile.headline).split(" ");
+  const headlineWords = (profile.headline || "Portfolio").split(" ");
   const headlineSplit = Math.ceil(headlineWords.length / 2);
   const headlineLead = headlineWords.slice(0, headlineSplit).join(" ");
   const headlineAccent = headlineWords.slice(headlineSplit).join(" ");
@@ -117,18 +94,19 @@ function Hero({ profile }) {
   return (
     <section className="hero section-wrap" id="home">
       <div className="hero-copy">
-        <Eyebrow>{profile.name || initialProfile.name} · computer science student · developer</Eyebrow>
+        <Eyebrow>{profile.name || "Developer portfolio"}</Eyebrow>
+        <ResourceFeedback name="profile" loading={resource.loading} error={resource.error} />
         {profile.availability_enabled && profile.availability_label && <p className="availability-label"><span />{profile.availability_label}</p>}
         <h1>{headlineLead}{headlineAccent && <><br /><span className="serif-accent">{headlineAccent}</span></>}</h1>
-        <p className="hero-intro">{profile.introduction || initialProfile.introduction}</p>
+        {profile.introduction && <p className="hero-intro">{profile.introduction}</p>}
         <p className="typing-line"><span className="typing-prefix">Currently exploring</span> <span key={roleIndex} className="typing-word">{roles[roleIndex]}</span><span className="typing-cursor">_</span></p>
         <div className="hero-actions">
           <a className="button button-primary" href="#projects">Explore projects <ArrowDownRight size={16} /></a>
           <a className="button button-quiet" href="#contact">Get in touch <ArrowUpRight size={15} /></a>
         </div>
         <div className="hero-socials">
-          <IconLink href={profile.github_url || initialProfile.github_url} label="GitHub"><Github size={17} /></IconLink>
-          <IconLink href={profile.linkedin_url || initialProfile.linkedin_url} label="LinkedIn"><Linkedin size={17} /></IconLink>
+          {profile.github_url && <IconLink href={profile.github_url} label="GitHub"><Github size={17} /></IconLink>}
+          {profile.linkedin_url && <IconLink href={profile.linkedin_url} label="LinkedIn"><Linkedin size={17} /></IconLink>}
           {profile.cv ? <a className="cv-link" href={profile.cv} target="_blank" rel="noreferrer">Download CV <ArrowDown size={14} /></a> : <button className="cv-link cv-disabled" type="button" disabled title="Upload a CV in Django Admin to enable this download">Download CV <ArrowDown size={14} /></button>}
         </div>
       </div>
@@ -136,11 +114,11 @@ function Hero({ profile }) {
         <div className="art-grid" />
         <div className="orbit orbit-one" /><div className="orbit orbit-two" />
         <div className="profile-monogram">
-          {profile.avatar ? <img className="profile-image" src={profile.avatar} alt={`${profile.name} profile`} /> : <><span>ZS</span><span className="monogram-caption">Profile photo<br />add in admin</span></>}
+          {profile.avatar ? <img className="profile-image" src={profile.avatar} alt={`${profile.name || "Profile"} photo`} /> : <><span>{profile.name?.split(/\s+/).map((part) => part[0]).join("").slice(0, 2) || "ZS"}</span><span className="monogram-caption">Profile photo<br />add in admin</span></>}
         </div>
         <div className="float-card float-code"><Code2 size={15} /><span>curiosity += 1</span></div>
         <div className="float-card float-idea"><Sparkles size={15} /><span>build · learn · repeat</span></div>
-        <div className="art-caption"><span>01 — 2026</span><span>Peshawar, PK</span></div>
+        <div className="art-caption"><span>01 — 2026</span><span>Developer portfolio</span></div>
       </div>
       <div className="hero-bottom"><span>Scroll to explore</span><span className="scroll-line" /></div>
     </section>
@@ -148,47 +126,50 @@ function Hero({ profile }) {
 }
 
 function About({ profile }) {
-  const interests = profile.interests?.length ? profile.interests : initialProfile.interests;
+  const interests = Array.isArray(profile.interests) ? profile.interests : [];
   return (
     <section className="section-wrap content-section" id="about">
       <SectionHeading index="01" title={<>A little about<br /><span className="serif-accent">the builder.</span></>} note="Grounded in fundamentals. Curious about what comes next." />
       <div className="about-grid">
         <div className="about-copy">
           <Eyebrow>Who I am</Eyebrow>
-          <p className="about-lead">{profile.about || initialProfile.about}</p>
-          <p className="body-copy">I like understanding how a product works from the first interaction to the data behind it. That curiosity has led me from building interfaces to exploring APIs, databases, and the craft of thoughtful software.</p>
+          {profile.about && <p className="about-lead">{profile.about}</p>}
           <div className="interest-list">{interests.map((interest) => <span className="interest-chip" key={interest}>{interest}</span>)}</div>
         </div>
-        <div className="journey-card">
+        {profile.education && <div className="journey-card">
           <div className="journey-icon"><BookOpen size={19} /></div>
-          <p className="card-kicker">Currently studying</p>
-          <h3>{profile.education || initialProfile.education}</h3>
+          <p className="card-kicker">Education</p>
+          <h3>{profile.education}</h3>
           <div className="journey-rule" />
           <p className="body-copy">Building a strong foundation in computer science while turning new ideas into projects and practical experience.</p>
           <span className="journey-foot">Learning is part of the work <ArrowUpRight size={14} /></span>
-        </div>
+        </div>}
       </div>
     </section>
   );
 }
 
-function Skills({ skills }) {
+function Skills({ resource }) {
+  const skills = resource.data;
   return (
     <section className="section-wrap content-section" id="skills">
       <SectionHeading index="02" title={<>Tools of<br /><span className="serif-accent">the trade.</span></>} note="A growing toolkit, organized by where I put it to work." />
-      <div className="skills-grid">
-        {skillGroups.map(([group, label], index) => {
-          const items = skills.filter((skill) => skill.group === group);
-          return (
-            <motion.article className="skill-card" key={group} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.3 }} transition={{ delay: index * 0.06 }}>
-              <div className="skill-card-top"><span className="skill-number">0{index + 1}</span><Layers3 size={16} /></div>
-              <h3>{label}</h3>
-              <div className="skill-tags">{(items.length ? items : []).map((skill) => <span key={skill.id || skill.name}>{skill.name}</span>)}</div>
-              {!items.length && <span className="muted-caption">Add skills in the admin dashboard</span>}
-            </motion.article>
-          );
-        })}
-      </div>
+      <ResourceFeedback name="skills" loading={resource.loading} error={resource.error} />
+      {!resource.loading && !resource.error && (skills.length
+        ? <div className="skills-grid">
+          {skillGroups.map(([group, label], index) => {
+            const items = skills.filter((skill) => skill.group === group);
+            return (
+              <motion.article className="skill-card" key={group} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.3 }} transition={{ delay: index * 0.06 }}>
+                <div className="skill-card-top"><span className="skill-number">0{index + 1}</span><Layers3 size={16} /></div>
+                <h3>{label}</h3>
+                <div className="skill-tags">{items.map((skill) => <span key={skill.id || skill.name}>{skill.name}</span>)}</div>
+                {!items.length && <span className="muted-caption">No skills in this group yet.</span>}
+              </motion.article>
+            );
+          })}
+        </div>
+        : <div className="empty-state"><Layers3 size={24} /><p>No skills have been added yet.</p></div>)}
     </section>
   );
 }
@@ -215,7 +196,8 @@ function ProjectCard({ project, index }) {
   );
 }
 
-function Projects({ projects }) {
+function Projects({ resource, githubUrl }) {
+  const projects = resource.data;
   const [category, setCategory] = useState("all");
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => projects.filter((project) => {
@@ -232,8 +214,11 @@ function Projects({ projects }) {
         </div>
         <label className="project-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find a project" aria-label="Search projects" /></label>
       </div>
-      {filtered.length ? <div className="projects-grid">{filtered.map((project, index) => <ProjectCard key={project.id || project.slug || project.name} project={project} index={index} />)}</div> : <div className="empty-state"><Code2 size={24} /><p>No projects match that search.</p><button onClick={() => { setSearch(""); setCategory("all"); }}>Clear filters</button></div>}
-      <div className="projects-cta"><span>More experiments and code live on GitHub.</span><a href={initialProfile.github_url} target="_blank" rel="noreferrer">Browse GitHub <ArrowUpRight size={15} /></a></div>
+      <ResourceFeedback name="projects" loading={resource.loading} error={resource.error} />
+      {!resource.loading && !resource.error && (filtered.length
+        ? <div className="projects-grid">{filtered.map((project, index) => <ProjectCard key={project.id || project.slug || project.name} project={project} index={index} />)}</div>
+        : <div className="empty-state"><Code2 size={24} /><p>{projects.length ? "No projects match that search." : "No projects have been added yet."}</p>{projects.length > 0 && <button onClick={() => { setSearch(""); setCategory("all"); }}>Clear filters</button>}</div>)}
+      {githubUrl && <div className="projects-cta"><span>More experiments and code live on GitHub.</span><a href={githubUrl} target="_blank" rel="noreferrer">Browse GitHub <ArrowUpRight size={15} /></a></div>}
     </section>
   );
 }
@@ -263,7 +248,8 @@ function ArticleCard({ article }) {
   return <Link className="article-card" to={`/articles/${article.slug}`}>{card}</Link>;
 }
 
-function Writing({ articles }) {
+function Writing({ resource, profile }) {
+  const articles = resource.data;
   const [filter, setFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
@@ -285,8 +271,11 @@ function Writing({ articles }) {
             {platforms.length > 0 && <label>Platform<select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)}><option value="all">All platforms</option>{platforms.map((platform) => <option key={platform} value={platform}>{platform}</option>)}</select></label>}
           </div>
       </div>
-      {shown.length ? <div className="articles-grid">{shown.map((article) => <ArticleCard key={article.id || article.slug} article={article} />)}</div> : <div className="writing-empty"><div className="empty-icon"><BookOpen size={20} /></div><div><h3>The next note is taking shape.</h3><p>Articles and external publications will appear here as they’re added.</p></div><a href={initialProfile.linkedin_url} target="_blank" rel="noreferrer">Connect on LinkedIn <ArrowUpRight size={14} /></a></div>}
-      <div className="writing-platforms"><span>Find me elsewhere</span><a href={initialProfile.linkedin_url} target="_blank" rel="noreferrer"><Linkedin size={15} /> LinkedIn <ArrowUpRight size={13} /></a><a href={initialProfile.github_url} target="_blank" rel="noreferrer"><Github size={15} /> GitHub <ArrowUpRight size={13} /></a></div>
+      <ResourceFeedback name="articles" loading={resource.loading} error={resource.error} />
+      {!resource.loading && !resource.error && (shown.length
+        ? <div className="articles-grid">{shown.map((article) => <ArticleCard key={article.id || article.slug} article={article} />)}</div>
+        : <div className="writing-empty"><div className="empty-icon"><BookOpen size={20} /></div><div><h3>{articles.length ? "No articles match these filters." : "No articles have been published yet."}</h3><p>{articles.length ? "Try a different category or platform." : "Published articles will appear here when added in Django Admin."}</p></div>{!articles.length && profile.linkedin_url && <a href={profile.linkedin_url} target="_blank" rel="noreferrer">Connect on LinkedIn <ArrowUpRight size={14} /></a>}</div>)}
+      {(profile.linkedin_url || profile.github_url) && <div className="writing-platforms"><span>Find me elsewhere</span>{profile.linkedin_url && <a href={profile.linkedin_url} target="_blank" rel="noreferrer"><Linkedin size={15} /> LinkedIn <ArrowUpRight size={13} /></a>}{profile.github_url && <a href={profile.github_url} target="_blank" rel="noreferrer"><Github size={15} /> GitHub <ArrowUpRight size={13} /></a>}</div>}
     </section>
   );
 }
@@ -299,16 +288,7 @@ function Contact({ profile }) {
     event.preventDefault();
     setState({ status: "sending", message: "" });
     try {
-      const response = await fetch(`${API}/api/contact/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        const detail = Object.values(result).flat().find((item) => typeof item === "string");
-        throw new Error(detail || "Your message could not be sent. Please try the email link.");
-      }
+      const result = await submitContact(form);
       setState({ status: "sent", message: result.email_configured ? result.message : "Message saved. Email delivery isn't configured yet; for a direct reply, use the email link." });
       setForm({ name: "", email: "", subject: "", message: "", website: "" });
     } catch (error) {
@@ -316,7 +296,7 @@ function Contact({ profile }) {
     }
   }
   const email = profile.email;
-  const contactHref = email ? `mailto:${email}` : (profile.linkedin_url || initialProfile.linkedin_url);
+  const contactHref = email ? `mailto:${email}` : profile.linkedin_url;
   return (
     <section className="contact-section" id="contact">
       <div className="section-wrap contact-wrap">
@@ -325,12 +305,12 @@ function Contact({ profile }) {
           <div className="contact-aside">
             <Eyebrow>Start a conversation</Eyebrow>
             <p>I'm always glad to connect with people who care about building thoughtful things.</p>
-            <a className="email-card" href={contactHref} target={email ? undefined : "_blank"} rel={email ? undefined : "noreferrer"}>
+            {contactHref && <a className="email-card" href={contactHref} target={email ? undefined : "_blank"} rel={email ? undefined : "noreferrer"}>
               <span className="email-icon">{email ? <AtSign size={17} /> : <Linkedin size={17} />}</span><span><small>{email ? "Email me" : "Connect directly"}</small><strong>{email || "Message me on LinkedIn"}</strong></span><ArrowUpRight size={17} />
-            </a>
+            </a>}
             <div className="contact-socials">
-              <a href={profile.github_url || initialProfile.github_url} target="_blank" rel="noreferrer"><Github size={16} /> GitHub <ArrowUpRight size={13} /></a>
-              <a href={profile.linkedin_url || initialProfile.linkedin_url} target="_blank" rel="noreferrer"><Linkedin size={16} /> LinkedIn <ArrowUpRight size={13} /></a>
+              {profile.github_url && <a href={profile.github_url} target="_blank" rel="noreferrer"><Github size={16} /> GitHub <ArrowUpRight size={13} /></a>}
+              {profile.linkedin_url && <a href={profile.linkedin_url} target="_blank" rel="noreferrer"><Linkedin size={16} /> LinkedIn <ArrowUpRight size={13} /></a>}
             </div>
           </div>
           <form className="contact-form" onSubmit={submit}>
@@ -352,15 +332,17 @@ function Contact({ profile }) {
   );
 }
 
-function Footer({ profile, connected }) {
+function Footer({ resources }) {
   const { pathname } = useLocation();
   const homeAnchor = pathname === "/" ? "#home" : "/#home";
+  const isLoading = resources?.some((resource) => resource.loading);
+  const hasError = resources?.some((resource) => resource.error);
   return (
     <footer className="site-footer section-wrap">
       <a className="footer-brand" href={homeAnchor}>ZS<span>.</span></a>
       <span className="footer-credit">Designed & built with curiosity <span>✳</span> 2026</span>
       <div className="footer-right">
-        <span className={`api-status ${connected ? "" : "api-offline"}`}><i />{connected ? "Content synced" : "Showing saved portfolio content"}</span>
+        {resources && <span className={`api-status ${hasError ? "api-offline" : ""}`}><i />{isLoading ? "Loading content" : hasError ? "Some content unavailable" : "Content synced"}</span>}
         <a href="/admin/" target="_blank" rel="noreferrer">Manage site <ArrowUpRight size={12} /></a>
         <a href={homeAnchor}>Back to top <ArrowRight size={13} /></a>
       </div>
@@ -371,15 +353,10 @@ function Footer({ profile, connected }) {
 function ArticlePage() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const [article, setArticle] = useState(null);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    getJSON(`articles/${encodeURIComponent(slug)}/`)
-      .then((result) => { if (active) setArticle(result); })
-      .catch(() => { if (active) setError("This article could not be found or is not published."); });
-    return () => { active = false; };
-  }, [slug]);
+  const loadArticle = useCallback(({ signal }) => getArticle(slug, { signal }), [slug]);
+  const resource = useApiResource(loadArticle, null);
+  const article = resource.data?.slug === slug ? resource.data : null;
+  const articleLoading = resource.loading || (!article && !resource.error);
   useEffect(() => {
     if (!article) return;
     document.title = `${article.title} — Ziaullah Saafir`;
@@ -404,26 +381,28 @@ function ArticlePage() {
         <h1>{article.title}</h1><p className="reader-description">{article.description}</p>
         {article.cover_image && <img className="reader-cover" src={article.cover_image} alt="" />}
         <div className="markdown-body"><ReactMarkdown>{article.content || ""}</ReactMarkdown></div>
-      </article> : error ? <div className="reader-error"><BookOpen size={24} /><h1>Article unavailable</h1><p>{error}</p></div> : <div className="reader-loading">Loading article...</div>}
+      </article> : articleLoading
+        ? <div className="reader-loading" role="status">Loading article...</div>
+        : <div className="reader-error" role="alert"><BookOpen size={24} /><h1>Article unavailable</h1><p>{resource.error}</p></div>}
     </main>
   );
 }
 
 function Home({ theme, setTheme }) {
-  const data = usePortfolioData();
+  const resources = usePortfolioData();
+  const profile = resources.profile.data || {};
   return (
     <>
-      <Header theme={theme} setTheme={setTheme} profile={data.profile} />
-      {!data.connected && <div className="offline-notice" role="status">Content API unavailable; showing the saved portfolio information.</div>}
+      <Header theme={theme} setTheme={setTheme} />
       <main>
-        <Hero profile={data.profile} />
-        <About profile={data.profile} />
-        <Skills skills={data.skills} />
-        <Projects projects={data.projects} />
-        <Writing articles={data.articles} />
-        <Contact profile={data.profile} />
+        <Hero resource={resources.profile} />
+        <About profile={profile} />
+        <Skills resource={resources.skills} />
+        <Projects resource={resources.projects} githubUrl={profile.github_url} />
+        <Writing resource={resources.articles} profile={profile} />
+        <Contact profile={profile} />
       </main>
-      <Footer profile={data.profile} connected={data.connected} />
+      <Footer resources={Object.values(resources)} />
     </>
   );
 }
@@ -438,7 +417,7 @@ export default function App() {
     <AnimatePresence mode="wait">
       <Routes>
         <Route path="/" element={<Home theme={theme} setTheme={setTheme} />} />
-        <Route path="/articles/:slug" element={<><Header theme={theme} setTheme={setTheme} profile={initialProfile} /><ArticlePage /><Footer profile={initialProfile} connected /></>} />
+        <Route path="/articles/:slug" element={<><Header theme={theme} setTheme={setTheme} /><ArticlePage /><Footer /></>} />
         <Route path="*" element={<Home theme={theme} setTheme={setTheme} />} />
       </Routes>
     </AnimatePresence>

@@ -35,7 +35,7 @@ npm install
 npm run dev
 ```
 
-Vite proxies `/api`, `/admin`, and `/media` to the Django server at `http://127.0.0.1:8000`. For a hosted frontend, set `VITE_API_URL` to the backend URL without a trailing slash and add the frontend origin to Django's `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS`.
+The frontend uses a centralized API client and loads profile, projects, articles, and skills independently, so a failed endpoint does not hide data from working endpoints. Vite proxies `/api`, `/admin`, and `/media` to the Django server at `http://127.0.0.1:8000`. For a hosted frontend, set `VITE_API_URL` to the backend URL without a trailing slash and add the frontend origin to Django's `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS`.
 
 Build the static frontend with `npm run build`. For the Vercel + Render + Neon free-tier deployment:
 
