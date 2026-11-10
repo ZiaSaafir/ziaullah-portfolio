@@ -48,7 +48,7 @@ function Header({ theme, setTheme }) {
   return (
     <header className="site-header">
       <a className="wordmark" href={homeAnchor("#home")} aria-label="Ziaullah Saafir home">
-        <span className="wordmark-mark">Z</span><span>ziaullah<span className="wordmark-muted">.dev</span></span>
+        <span className="wordmark-mark">Z</span><span>ziaullah<span className="wordmark-muted"></span></span>
       </a>
       <nav className={menuOpen ? "nav-links nav-open" : "nav-links"} aria-label="Main navigation">
         {links.map(([label, href]) => <a key={href} href={homeAnchor(href)} onClick={() => setMenuOpen(false)}>{label}</a>)}
